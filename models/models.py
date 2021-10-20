@@ -60,3 +60,21 @@ class SimpleLogisticODE(nn.Module):
         if not reg:
             return self.activation(y)
         return self.activation(y), (wt ** 2).sum()
+
+
+class ODEOptimizer(nn.Module):
+    def __init__(self, in_dim, w0=None, hid_dim=64, rtol=1e-3, atol=1e-3):
+        super(ODEOptimizer, self).__init__()
+        self.ode_func = ODEfunc(in_dim, hid_dim)
+        self.ode = ODEBlock(self.ode_func, rtol=rtol, atol=atol)
+        self.activation = nn.Sigmoid()
+        if w0 is None:
+            self.w0 = torch.randn(1, in_dim).float().cuda()
+        else:
+            self.w0 = w0.clone()
+
+    def forward(self, integration_times=None, reg=False):
+        wt = self.ode(self.w0, integration_times=integration_times)
+        if integration_times is None:
+            wt = wt[0]
+        return wt

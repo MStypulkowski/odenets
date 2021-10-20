@@ -1,32 +1,16 @@
-import random
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-from torchvision.datasets import MNIST
-from torchvision.transforms import Compose, ToTensor
-from tqdm.notebook import tqdm
-from sklearn.linear_model import LogisticRegression
-from collections import OrderedDict
 
 from torchdiffeq import odeint_adjoint as odeint
 
-from data.datasets import get_toy_data
-from models.models import Logistic, LogisticODE, SimpleLogistic, SimpleLogisticODE
+from utils import seed_everything
+from data import get_toy_data
+from models import Logistic, LogisticODE
 
 print(f'Available GPUs: {torch.cuda.device_count()}')
-
-
-def seed_everything(seed: int):
-    random.seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = True
 
 
 if __name__ == '__main__':
@@ -40,7 +24,6 @@ if __name__ == '__main__':
     X, Y  = get_toy_data()
     X, Y = X.cuda(), Y.cuda()
     
-
     ######################################
     # LOGISTIC REGRESSION
     ######################################
@@ -105,7 +88,6 @@ if __name__ == '__main__':
         ws_ode = model_logisticODE(None, integration_times=integration_times).detach().cpu().squeeze(1)
         ws_ode = torch.cat([w0.cpu(), ws_ode], dim=0)
 
-
     x = np.arange(n_epochs)
     fig, ax = plt.subplots(2, 2, figsize=(15, 10))
 
@@ -130,4 +112,4 @@ if __name__ == '__main__':
     ax[1, 1].set_xlabel('epoch/time')
     ax[1, 1].set_ylabel('w1')
 
-    plt.savefig(os.path.join(result_dir, 'logreg_params'))
+    plt.savefig(os.path.join(result_dir, 'logreg_params.png'))
