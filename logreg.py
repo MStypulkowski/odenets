@@ -73,8 +73,8 @@ if __name__ == '__main__':
 
     for epoch in range(n_epochs//10):
         optimizer.zero_grad()
-        y_pred = model_logisticODE(X)
-        loss_val = loss(y_pred, Y)
+        probs = model_logisticODE(X)
+        loss_val = loss(probs, Y)
         loss_val.backward()
         optimizer.step()
         
@@ -82,17 +82,24 @@ if __name__ == '__main__':
             print(f"Epoch: {epoch} Loss: {loss_val.item():.4f}")
 
     # get parameters from multiple timestamps
+    loss_vals_ode = []
     model_logisticODE.eval()
     with torch.no_grad():
         integration_times = torch.linspace(0, 1, n_epochs).float().cuda()
-        ws_ode = model_logisticODE(None, integration_times=integration_times).detach().cpu().squeeze(1)
-        ws_ode = torch.cat([w0.cpu(), ws_ode], dim=0)
+        ws_ode = model_logisticODE(None, integration_times=integration_times).detach().squeeze(1)
+        ws_ode = torch.cat([w0, ws_ode], dim=0)
+        
+        for w_ode in ws_ode:
+            probs = model_logisticODE.get_probs(w_ode.view(1, -1), X)
+            loss_vals_ode.append(loss(probs, Y).item())
+        
+        ws_ode = ws_ode.cpu()
 
     x = np.arange(n_epochs)
     fig, ax = plt.subplots(2, 2, figsize=(15, 10))
 
     ax[0, 0].plot(x, loss_vals, label='LogReg')
-    ax[0, 0].plot(x, loss_vals, label='ODE')
+    ax[0, 0].plot(x, loss_vals_ode, label='ODE')
     ax[0, 0].set_xlabel('epoch/time')
     ax[0, 0].set_ylabel('loss')
     ax[0, 0].legend()

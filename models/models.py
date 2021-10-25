@@ -24,15 +24,19 @@ class LogisticODE(nn.Module):
         else:
             self.w0 = w0.clone()
 
-    def forward(self, x, integration_times=None, reg=False):
+    def forward(self, x, integration_times=None, regularization=False):
         wt = self.ode(self.w0, integration_times=integration_times)
         if integration_times is None:
             wt = wt[0]
             y = torch.matmul(torch.cat((x, torch.ones((x.shape[0], 1)).cuda()), axis=1), wt.T)
-            if not reg:
+            if not regularization:
                 return self.activation(y)
             return self.activation(y), (wt ** 2).sum()
         return wt
+
+    def get_probs(self, wt, x):
+        y = torch.matmul(torch.cat((x, torch.ones((x.shape[0], 1)).cuda()), axis=1), wt.T)
+        return self.activation(y)
 
 
 class SimpleLogistic(nn.Module):
