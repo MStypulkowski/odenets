@@ -50,3 +50,16 @@ class ODEBlock(nn.Module):
             integration_times = self.integration_times
         wt = odeint(self.odefunc, w0, integration_times, rtol=self.rtol, atol=self.atol)
         return wt[1:]
+
+
+class LinearDynamic(nn.Module):
+    def __init__(self, in_dim, alpha1D=True):
+        super(LinearDynamic, self).__init__()
+        if alpha1D:
+            self.alpha = nn.Parameter(torch.randn(1))
+        else:
+            self.alpha = nn.Parameter(torch.randn(1, in_dim))
+        self.w1 = nn.Parameter(torch.randn(1, in_dim))
+
+    def forward(self, t, w):
+        return self.alpha * (self.w1 - w)

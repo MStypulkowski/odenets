@@ -4,19 +4,28 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
-from torchdiffeq import odeint_adjoint as odeint
-
 from utils import seed_everything
 from data import get_toy_data
 from models import Logistic, LogisticODE
 
-print(f'Available GPUs: {torch.cuda.device_count()}')
+print(f'Available GPUs: {torch.cuda.device_count()}\n')
 
 
 if __name__ == '__main__':
     seed = 42
     n_epochs = 10000
+    lr = 1e-2
     result_dir = '/pio/scratch/1/mstyp/odenets/results'
+    # dynamic_type = 'nn'
+    hid_dim = 64
+    dynamic_type = 'linear'
+    alpha1D = False
+
+    if dynamic_type == 'nn':
+        name = dynamic_type + '_' + str(hid_dim)
+    elif dynamic_type == 'linear':
+        name = dynamic_type + '_alpha1D_' + str(alpha1D)
+    print(n_epochs, lr, name, '\n')
 
     seed_everything(seed)
     w0 = torch.randn(1, 3).float().cuda()
@@ -27,14 +36,14 @@ if __name__ == '__main__':
     ######################################
     # LOGISTIC REGRESSION
     ######################################
-    print('\nTraining logistic regression...')
+    print('Training logistic regression...')
     model_logistic = Logistic().cuda()
 
     # initialize parameters so they match ODE models
     model_logistic.fc1.weight.data = w0[:, :2].clone()
     model_logistic.fc1.bias.data = w0[:, -1].clone()
 
-    optimizer = torch.optim.Adam(model_logistic.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model_logistic.parameters(), lr=lr)
 
     model_logistic.train()
     loss = nn.BCELoss()
@@ -64,9 +73,9 @@ if __name__ == '__main__':
     # ODE LOGISTIC REGRESSION
     ######################################
     print('\nTraining ODE logistic regression...')
-    model_logisticODE = LogisticODE(w0=w0, hid_dim=64).cuda()
+    model_logisticODE = LogisticODE(w0=w0, dynamic_type=dynamic_type, hid_dim=hid_dim, alpha1D=alpha1D).cuda()
 
-    optimizer = torch.optim.SGD(model_logisticODE.ode.parameters(), lr=0.001, momentum=0.9)
+    optimizer = torch.optim.Adam(model_logisticODE.ode.parameters(), lr=lr)
 
     model_logisticODE.train()
     loss = nn.BCELoss()
@@ -96,27 +105,44 @@ if __name__ == '__main__':
         ws_ode = ws_ode.cpu()
 
     x = np.arange(n_epochs)
+
+    if dynamic_type == 'linear':
+        w1 = model_logisticODE.ode_func.w1.data.cpu()
+        alpha = model_logisticODE.ode_func.alpha.data.cpu()
+        print(alpha, w1)
+        ws_ode_true = (w0.cpu() - w1) * torch.exp(-alpha * x.reshape(-1, 1) / n_epochs) + w1
+
     fig, ax = plt.subplots(2, 2, figsize=(15, 10))
 
-    ax[0, 0].plot(x, loss_vals, label='LogReg')
-    ax[0, 0].plot(x, loss_vals_ode, label='ODE')
+    ax[0, 0].plot(x, loss_vals)
+    ax[0, 0].plot(x, loss_vals_ode)
     ax[0, 0].set_xlabel('epoch/time')
     ax[0, 0].set_ylabel('loss')
-    ax[0, 0].legend()
 
-    ax[0, 1].plot(x, bs)
-    ax[0, 1].plot(x, ws_ode[:, -1])
+    ax[0, 1].plot(x, bs, label='LogReg')
+    ax[0, 1].plot(x, ws_ode[:, -1], label='ODE')
+    if dynamic_type == 'linear':
+        ax[0, 1].plot(x, ws_ode_true[:, -1], '--', label='GT')
+        ax[0, 1].scatter(x[-1], w1[0, -1], s=100, marker='*', c='red', label='w_t1')
     ax[0, 1].set_xlabel('epoch/time')
     ax[0, 1].set_ylabel('b')
+    ax[0, 1].legend()
 
     ax[1, 0].plot(x, ws[:, 0])
     ax[1, 0].plot(x, ws_ode[:, 0])
+    if dynamic_type == 'linear':
+        ax[1, 0].plot(x, ws_ode_true[:, 0], '--')
+        ax[1, 0].scatter(x[-1], w1[0, 0], s=100, marker='*', c='red')
     ax[1, 0].set_xlabel('epoch/time')
     ax[1, 0].set_ylabel('w0')
 
     ax[1, 1].plot(x, ws[:, 1])
     ax[1, 1].plot(x, ws_ode[:, 1])
+    if dynamic_type == 'linear':
+        ax[1, 1].plot(x, ws_ode_true[:, 1], '--')
+        ax[1, 1].scatter(x[-1], w1[0, 1], s=100, marker='*', c='red')
     ax[1, 1].set_xlabel('epoch/time')
     ax[1, 1].set_ylabel('w1')
 
-    plt.savefig(os.path.join(result_dir, 'logreg_params.png'))
+    plt.suptitle(name, fontsize=20)
+    plt.savefig(os.path.join(result_dir, 'logreg_params_' + name +'.png'))
