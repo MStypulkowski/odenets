@@ -86,36 +86,19 @@ class SoftmaxODE(nn.Module):
             self.w0 = w0.clone()
         self.activation = nn.Softmax(dim=1)
 
-        # self.encoder = nn.Sequential(
-        #     nn.Linear(data_dims[0], 512),
-        #     nn.LeakyReLU(0.1),
-        #     nn.Linear(512, data_dims[1]),
-        #     nn.LeakyReLU(0.1)
-        # )
-
     def forward(self, x, integration_times=None):
-        # try:
-        #     print('Model', self.w0.shape, x.shape, integration_times.shape)
-        # except:
-        #     print('Model', self.w0.shape, x.shape)
-        # x_emb = self.encoder(x).mean(0).reshape(1, -1)
-        # print('Embedding', x_emb.shape)
-        # print(self.w0.shape, x.shape)
         if self.data_dependent:
             w0_epoch = self.w0.expand(x.shape[0], -1)
         else:
             w0_epoch = self.w0
-        # print(w0_epoch.shape)
         wt = self.ode(w0_epoch, x, integration_times=integration_times)
         if integration_times is None:
             if self.data_dependent:
                 wt = wt[0][-1] # wt is in the form (dw, dx), where dw has shape [n_integration_times, bsz, w_dim]
-                # print(wt.shape)
                 weights = wt[:, :self.layer_dims[0] * self.layer_dims[1]].reshape(-1, self.layer_dims[0], self.layer_dims[1])
                 biases = wt[:, -self.layer_dims[1]:].reshape(-1, self.layer_dims[1])
                 y = torch.bmm(x.unsqueeze(1), weights).squeeze(1) + biases
             else:
-                # print(wt[-1].shape)
                 wt = wt[-1]
                 weights = wt[:, :self.layer_dims[0] * self.layer_dims[1]].reshape(self.layer_dims[0], self.layer_dims[1])
                 biases = wt[:, -self.layer_dims[1]:]

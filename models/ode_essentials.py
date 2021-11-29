@@ -5,7 +5,7 @@ from models.ode_layers import ConcatLinear, ConcatLinear3D
 
 
 class ODEfunc(nn.Module):
-    def __init__(self, in_dim, hid_dim, n_layers=2, data_dependent=True, data_dims=None):
+    def __init__(self, in_dim, hid_dim, n_layers=2, data_dependent=False, data_dims=None):
         super(ODEfunc, self).__init__()
         assert n_layers >= 2
 
@@ -17,16 +17,14 @@ class ODEfunc(nn.Module):
 
         self.fcs = []
         self.fcs.append(base_layer(in_dim, hid_dim, data_dims=data_dims))
-        for i in range(n_layers-2):
+        for _ in range(n_layers-2):
             self.fcs.append(base_layer(hid_dim, hid_dim, data_dims=data_dims))
         self.fcs.append(base_layer(hid_dim, in_dim, activation=False, data_dims=data_dims))
-        # self.fcs.append(base_layer(hid_dim, in_dim + data_dims[1], activation=False, data_dims=data_dims))
         self.fcs = nn.ModuleList(self.fcs)
 
     def forward(self, t, inputs):
         if self.data_dependent:
             w, x = inputs
-            # print('ODEfunc', t.shape, w.shape, x.shape)
             for fc in self.fcs:
                 w = fc(t, w, x)
             return w, torch.zeros_like(x)
@@ -45,18 +43,14 @@ class ODEBlock(nn.Module):
         self.rtol = rtol
         self.atol = atol
 
-    def forward(self, w0, x, integration_times=None):
+    def forward(self, w0, x=None, integration_times=None):
         if integration_times is None:
             integration_times = self.integration_times
         if self.odefunc.data_dependent:
-            # print('ODEBlock', w0.shape, x.shape, integration_times.shape)
             inputs = (w0, x)
         else:
             inputs = w0
-        # print('inputs', inputs.shape)
         wt = odeint(self.odefunc, inputs, integration_times, rtol=self.rtol, atol=self.atol)
-        # print(wt.shape)
-        # print('Final', len(wt), wt[0][1:].shape)
         return wt
 
 
