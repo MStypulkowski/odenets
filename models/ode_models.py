@@ -1,0 +1,125 @@
+import torch
+import torch.nn as nn
+from models.ode_essentials import ODEBlock, ODEfunc, LinearDynamic
+
+
+class LogisticODE(nn.Module):
+    def __init__(self, w0=None, dynamic_type='nn', hid_dim=64, alpha1D=True, rtol=1e-3, atol=1e-3):
+        super(LogisticODE, self).__init__()
+        if dynamic_type == 'nn':
+            self.ode_func = ODEfunc(3, hid_dim)
+        elif dynamic_type == 'linear':
+            self.ode_func = LinearDynamic(3, alpha1D=alpha1D)
+        self.ode = ODEBlock(self.ode_func, rtol=rtol, atol=atol)
+        self.activation = nn.Sigmoid()
+        if w0 is None:
+            self.w0 = torch.randn(1, 3).float().cuda()
+        else:
+            self.w0 = w0.clone()
+
+    def forward(self, x, integration_times=None, regularization=False):
+        wt = self.ode(self.w0, integration_times=integration_times)
+        if integration_times is None:
+            wt = wt[0]
+            y = torch.matmul(torch.cat((x, torch.ones((x.shape[0], 1)).cuda()), axis=1), wt.T)
+            if not regularization:
+                return self.activation(y)
+            return self.activation(y), (wt ** 2).sum()
+        return wt
+
+    def get_probs(self, wt, x):
+        y = torch.matmul(torch.cat((x, torch.ones((x.shape[0], 1)).cuda()), axis=1), wt.T)
+        return self.activation(y)
+
+
+class SimpleLogisticODE(nn.Module):
+    def __init__(self, hid_dim):
+        super(SimpleLogisticODE, self).__init__()
+        self.ode_func = ODEfunc(2, hid_dim)
+        self.ode = ODEBlock(self.ode_func)
+        self.activation = nn.Sigmoid()
+        # self.w0 = torch.zeros(1, 2).float().cuda()
+        self.w0 = torch.randn(1, 2).float().cuda()
+
+    def forward(self, x, integration_times=None, reg=False):
+        wt = self.ode(self.w0, integration_times=integration_times)
+        y = x @ wt.T
+        if not reg:
+            return self.activation(y)
+        return self.activation(y), (wt ** 2).sum()
+
+
+class ODEOptimizer(nn.Module):
+    def __init__(self, in_dim, w0=None, dynamic_type='nn', hid_dim=64, alpha1D=True, n_layers=2, rtol=1e-3, atol=1e-3):
+        super(ODEOptimizer, self).__init__()
+        if dynamic_type == 'nn':
+            self.ode_func = ODEfunc(in_dim, hid_dim, n_layers=n_layers)
+        elif dynamic_type == 'linear':
+            self.ode_func = LinearDynamic(in_dim, alpha1D=alpha1D)
+        self.ode = ODEBlock(self.ode_func, rtol=rtol, atol=atol)
+        if w0 is None:
+            self.w0 = torch.randn(1, in_dim).float().cuda()
+        else:
+            self.w0 = w0.clone()
+
+    def forward(self, integration_times=None):
+        wt = self.ode(self.w0, integration_times=integration_times)
+        if integration_times is None:
+            wt = wt[0]
+        return wt
+
+
+class SoftmaxODE(nn.Module):
+    def __init__(self, layer_dims, w0=None, dynamic_type='nn', hid_dim=2048, n_layers=4, alpha1D=True, data_dependent=True, data_dims=None, rtol=1e-3, atol=1e-3):
+        super(SoftmaxODE, self).__init__()
+        self.data_dependent = data_dependent
+        self.layer_dims = layer_dims
+        self.in_dim = layer_dims[0] * layer_dims[1] + layer_dims[1]
+        if dynamic_type == 'nn':
+            self.ode_func = ODEfunc(self.in_dim, hid_dim, n_layers=n_layers, data_dependent=data_dependent, data_dims=data_dims)
+        elif dynamic_type == 'linear':
+            self.ode_func = LinearDynamic(self.in_dim, alpha1D=alpha1D)
+        self.ode = ODEBlock(self.ode_func, rtol=rtol, atol=atol)
+        if w0 is None:
+            self.w0 = torch.randn(1, self.in_dim).float().cuda()
+        else:
+            self.w0 = w0.clone()
+        self.activation = nn.Softmax(dim=1)
+
+        # self.encoder = nn.Sequential(
+        #     nn.Linear(data_dims[0], 512),
+        #     nn.LeakyReLU(0.1),
+        #     nn.Linear(512, data_dims[1]),
+        #     nn.LeakyReLU(0.1)
+        # )
+
+    def forward(self, x, integration_times=None):
+        # try:
+        #     print('Model', self.w0.shape, x.shape, integration_times.shape)
+        # except:
+        #     print('Model', self.w0.shape, x.shape)
+        # x_emb = self.encoder(x).mean(0).reshape(1, -1)
+        # print('Embedding', x_emb.shape)
+        # print(self.w0.shape, x.shape)
+        if self.data_dependent:
+            w0_epoch = self.w0.expand(x.shape[0], -1)
+        else:
+            w0_epoch = self.w0
+        # print(w0_epoch.shape)
+        wt = self.ode(w0_epoch, x, integration_times=integration_times)
+        if integration_times is None:
+            if self.data_dependent:
+                wt = wt[0][-1] # wt is in the form (dw, dx), where dw has shape [n_integration_times, bsz, w_dim]
+                # print(wt.shape)
+                weights = wt[:, :self.layer_dims[0] * self.layer_dims[1]].reshape(-1, self.layer_dims[0], self.layer_dims[1])
+                biases = wt[:, -self.layer_dims[1]:].reshape(-1, self.layer_dims[1])
+                y = torch.bmm(x.unsqueeze(1), weights).squeeze(1) + biases
+            else:
+                # print(wt[-1].shape)
+                wt = wt[-1]
+                weights = wt[:, :self.layer_dims[0] * self.layer_dims[1]].reshape(self.layer_dims[0], self.layer_dims[1])
+                biases = wt[:, -self.layer_dims[1]:]
+                y = x @ weights + biases
+            return self.activation(y)
+        return wt
+        
