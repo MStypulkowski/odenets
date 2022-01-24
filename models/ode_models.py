@@ -50,10 +50,11 @@ class SimpleLogisticODE(nn.Module):
 
 
 class ODEOptimizer(nn.Module):
-    def __init__(self, in_dim, w0=None, dynamic_type='nn', hid_dim=64, alpha1D=True, n_layers=2, rtol=1e-3, atol=1e-3):
+    def __init__(self, in_dim, conditional=False, w0=None, dynamic_type='nn', hid_dim=64, alpha1D=True, n_layers=2, rtol=1e-3, atol=1e-3, dw_dims=None):
         super(ODEOptimizer, self).__init__()
+        self.conditional = conditional
         if dynamic_type == 'nn':
-            self.ode_func = ODEfunc(in_dim, hid_dim, n_layers=n_layers)
+            self.ode_func = ODEfunc(in_dim, hid_dim, n_layers=n_layers, conditional=conditional, dw_dims=dw_dims)
         elif dynamic_type == 'linear':
             self.ode_func = LinearDynamic(in_dim, alpha1D=alpha1D)
         self.ode = ODEBlock(self.ode_func, rtol=rtol, atol=atol)
@@ -62,21 +63,27 @@ class ODEOptimizer(nn.Module):
         else:
             self.w0 = w0.clone()
 
-    def forward(self, integration_times=None):
-        wt = self.ode(self.w0, integration_times=integration_times)
+    def forward(self, w0=None, dw=None, integration_times=None):
+        if w0 is None:
+            w0 = self.w0
+        wt = self.ode(w0, dw=dw, integration_times=integration_times)
         if integration_times is None:
-            wt = wt[0]
-        return wt
+            if self.conditional:
+                return wt[0][-1] # wt is in the form (dwdt, dLdw), where dw has shape [n_integration_times, bsz, w_dim]
+            return wt[-1]
+        if self.conditional:
+            return wt[0][1:]
+        return wt[1:]
 
 
 class SoftmaxODE(nn.Module):
-    def __init__(self, layer_dims, w0=None, dynamic_type='nn', hid_dim=2048, n_layers=4, alpha1D=True, data_dependent=True, data_dims=None, rtol=1e-3, atol=1e-3):
+    def __init__(self, layer_dims, w0=None, dynamic_type='nn', hid_dim=2048, n_layers=4, alpha1D=True, conditional=True, data_dims=None, rtol=1e-3, atol=1e-3):
         super(SoftmaxODE, self).__init__()
-        self.data_dependent = data_dependent
+        self.conditional = conditional
         self.layer_dims = layer_dims
         self.in_dim = layer_dims[0] * layer_dims[1] + layer_dims[1]
         if dynamic_type == 'nn':
-            self.ode_func = ODEfunc(self.in_dim, hid_dim, n_layers=n_layers, data_dependent=data_dependent, data_dims=data_dims)
+            self.ode_func = ODEfunc(self.in_dim, hid_dim, n_layers=n_layers, conditional=conditional, data_dims=data_dims)
         elif dynamic_type == 'linear':
             self.ode_func = LinearDynamic(self.in_dim, alpha1D=alpha1D)
         self.ode = ODEBlock(self.ode_func, rtol=rtol, atol=atol)
@@ -87,13 +94,13 @@ class SoftmaxODE(nn.Module):
         self.activation = nn.Softmax(dim=1)
 
     def forward(self, x, integration_times=None):
-        if self.data_dependent:
+        if self.conditional:
             w0_epoch = self.w0.expand(x.shape[0], -1)
         else:
             w0_epoch = self.w0
         wt = self.ode(w0_epoch, x, integration_times=integration_times)
         if integration_times is None:
-            if self.data_dependent:
+            if self.conditional:
                 wt = wt[0][-1] # wt is in the form (dw, dx), where dw has shape [n_integration_times, bsz, w_dim]
                 weights = wt[:, :self.layer_dims[0] * self.layer_dims[1]].reshape(-1, self.layer_dims[0], self.layer_dims[1])
                 biases = wt[:, -self.layer_dims[1]:].reshape(-1, self.layer_dims[1])

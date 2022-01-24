@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class ConcatLinear(nn.Module):
-    def __init__(self, in_dim, out_dim, activation=True, data_dims=None):
+    def __init__(self, in_dim, out_dim, activation=True, dw_dims=None):
         super(ConcatLinear, self).__init__()
         self.fc = nn.Linear(in_dim + 1, out_dim)
         self.activation = nn.Softplus() if activation else None
@@ -20,19 +20,19 @@ class ConcatLinear(nn.Module):
 
 
 class ConcatLinear3D(nn.Module):
-    def __init__(self, in_dim, out_dim, activation=True, data_dims=None):
+    def __init__(self, in_dim, out_dim, activation=True, dw_dims=None):
         super(ConcatLinear3D, self).__init__()
-        x_in_dim, x_out_dim = data_dims
-        self.fc_x = nn.Linear(x_in_dim, x_out_dim)
-        self.fc_twx = nn.Linear(in_dim + x_out_dim + 1, out_dim)
-        self.x_activation = nn.Softplus()
+        dw_in_dim, dw_out_dim = dw_dims
+        self.fc_dw = nn.Linear(dw_in_dim, dw_out_dim)
+        self.fc_twdw = nn.Linear(in_dim + dw_out_dim + 1, out_dim)
+        self.dw_activation = nn.Sigmoid()
         self.activation = nn.Softplus() if activation else None
 
-    def forward(self, t, w, x):
-        x = self.x_activation(self.fc_x(x))
+    def forward(self, t, w, dw):
+        dw = self.dw_activation(self.fc_dw(dw))
         t = torch.ones(w.size(0), 1).to(w) * t.clone().detach().requires_grad_(True).type_as(w)
-        twx = torch.cat([t, w, x], dim=1)
-        twx = self.fc_twx(twx)
+        twdw = torch.cat([t, w, dw], dim=1)
+        twdw = self.fc_twdw(twdw)
         if self.activation:
-            twx = self.activation(twx)
-        return twx
+            twdw = self.activation(twdw)
+        return twdw

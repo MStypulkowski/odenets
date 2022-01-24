@@ -5,29 +5,29 @@ from models.ode_layers import ConcatLinear, ConcatLinear3D
 
 
 class ODEfunc(nn.Module):
-    def __init__(self, in_dim, hid_dim, n_layers=2, data_dependent=False, data_dims=None):
+    def __init__(self, in_dim, hid_dim, n_layers=2, conditional=False, dw_dims=None):
         super(ODEfunc, self).__init__()
         assert n_layers >= 2
 
-        self.data_dependent = data_dependent
-        if data_dependent:
+        self.conditional = conditional
+        if conditional:
             base_layer = ConcatLinear3D
         else:
             base_layer = ConcatLinear
 
         self.fcs = []
-        self.fcs.append(base_layer(in_dim, hid_dim, data_dims=data_dims))
+        self.fcs.append(base_layer(in_dim, hid_dim, dw_dims=dw_dims))
         for _ in range(n_layers-2):
-            self.fcs.append(base_layer(hid_dim, hid_dim, data_dims=data_dims))
-        self.fcs.append(base_layer(hid_dim, in_dim, activation=False, data_dims=data_dims))
+            self.fcs.append(base_layer(hid_dim, hid_dim, dw_dims=dw_dims))
+        self.fcs.append(base_layer(hid_dim, in_dim, activation=False, dw_dims=dw_dims))
         self.fcs = nn.ModuleList(self.fcs)
 
     def forward(self, t, inputs):
-        if self.data_dependent:
-            w, x = inputs
+        if self.conditional:
+            w, dw = inputs
             for fc in self.fcs:
-                w = fc(t, w, x)
-            return w, torch.zeros_like(x)
+                w = fc(t, w, dw)
+            return w, torch.zeros_like(dw)
         else:
             w = inputs
             for fc in self.fcs:
@@ -43,11 +43,11 @@ class ODEBlock(nn.Module):
         self.rtol = rtol
         self.atol = atol
 
-    def forward(self, w0, x=None, integration_times=None):
+    def forward(self, w0, dw=None, integration_times=None):
         if integration_times is None:
             integration_times = self.integration_times
-        if self.odefunc.data_dependent:
-            inputs = (w0, x)
+        if self.odefunc.conditional:
+            inputs = (w0, dw)
         else:
             inputs = w0
         wt = odeint(self.odefunc, inputs, integration_times, rtol=self.rtol, atol=self.atol)

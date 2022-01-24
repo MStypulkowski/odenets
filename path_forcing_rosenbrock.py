@@ -20,7 +20,7 @@ if __name__ == '__main__':
     result_dir = '/pio/scratch/1/mstyp/odenets/results'
     t1 = 10
     dynamic_type = 'nn'
-    hid_dim = 64
+    hid_dim = 256
     n_layers = 3
     # dynamic_type = 'linear'
     alpha1D = True
@@ -91,7 +91,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.contour(X, Y, Z, 100)
     plt.plot(wt[:, 0], wt[:, 1], 'o-', c='red', label='ODE time')
-    plt.plot(w_path[:, 0], w_path[:, 1], 'o-', c='orange', label='ODE iter')
+    plt.plot(w_path[:, 0], w_path[:, 1], 'o-', c='orange', label='GD iter')
     plt.legend()
     plt.colorbar()
     plt.title(name)
