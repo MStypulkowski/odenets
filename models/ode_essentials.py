@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 from torchdiffeq import odeint_adjoint as odeint
-from models.ode_layers import ConcatLinear, ConcatLinear3D
+from models.ode_layers import ConcatLinear, ConcatLinear3D, ConcatSquashLinear
 
 
 class ODEfunc(nn.Module):
-    def __init__(self, in_dim, hid_dim, n_layers=2, conditional=False, dw_dims=None):
+    def __init__(self, in_dim, hid_dim, layer_name, n_layers=2, conditional=False, dw_dims=None):
         super(ODEfunc, self).__init__()
         assert n_layers >= 2
 
@@ -13,7 +13,10 @@ class ODEfunc(nn.Module):
         if conditional:
             base_layer = ConcatLinear3D
         else:
-            base_layer = ConcatLinear
+            if layer_name == 'concat':
+                base_layer = ConcatLinear
+            elif layer_name == 'concatsquash':
+                base_layer = ConcatSquashLinear
 
         self.fcs = []
         self.fcs.append(base_layer(in_dim, hid_dim, dw_dims=dw_dims))
@@ -25,11 +28,13 @@ class ODEfunc(nn.Module):
     def forward(self, t, inputs):
         if self.conditional:
             w, dw = inputs
+            t = torch.ones(w.size(0), 1).to(w) * t.clone().detach().requires_grad_(True).type_as(w)
             for fc in self.fcs:
                 w = fc(t, w, dw)
             return w, torch.zeros_like(dw)
         else:
             w = inputs
+            t = torch.ones(w.size(0), 1).to(w) * t.clone().detach().requires_grad_(True).type_as(w)
             for fc in self.fcs:
                 w = fc(t, w)
             return w

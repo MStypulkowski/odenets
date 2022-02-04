@@ -7,11 +7,8 @@ class ConcatLinear(nn.Module):
         super(ConcatLinear, self).__init__()
         self.fc = nn.Linear(in_dim + 1, out_dim)
         self.activation = nn.Softplus() if activation else None
-        self.ones = nn.Parameter(torch.ones(1, 1), requires_grad=False)
 
     def forward(self, t, w):
-        ones = self.ones.expand(w.size(0), 1)
-        t = ones * t
         tw = torch.cat([t, w], dim=1)
         tw = self.fc(tw)
         if self.activation:
@@ -30,9 +27,25 @@ class ConcatLinear3D(nn.Module):
 
     def forward(self, t, w, dw):
         dw = self.dw_activation(self.fc_dw(dw))
-        t = torch.ones(w.size(0), 1).to(w) * t.clone().detach().requires_grad_(True).type_as(w)
         twdw = torch.cat([t, w, dw], dim=1)
         twdw = self.fc_twdw(twdw)
         if self.activation:
             twdw = self.activation(twdw)
         return twdw
+
+
+class ConcatSquashLinear(nn.Module):
+    def __init__(self, in_dim, out_dim, activation=True, dw_dims=None):
+        super(ConcatSquashLinear, self).__init__()
+        self.fc = nn.Linear(in_dim, out_dim)
+        self.bias = nn.Linear(1, out_dim, bias=False)
+        self.gate = nn.Linear(1, out_dim)
+        self.activation = nn.Softplus() if activation else None
+
+    def forward(self, t, x):
+        gate = torch.sigmoid(self.gate(t))
+        bias = self.bias(t)
+        tw = self.fc(x) * gate + bias
+        if self.activation:
+            tw = self.activation(tw)
+        return tw

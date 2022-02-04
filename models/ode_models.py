@@ -50,11 +50,11 @@ class SimpleLogisticODE(nn.Module):
 
 
 class ODEOptimizer(nn.Module):
-    def __init__(self, in_dim, conditional=False, w0=None, dynamic_type='nn', hid_dim=64, alpha1D=True, n_layers=2, rtol=1e-3, atol=1e-3, dw_dims=None):
+    def __init__(self, in_dim, conditional=False, layer_name='concat', w0=None, dynamic_type='nn', hid_dim=64, alpha1D=True, n_layers=2, rtol=1e-3, atol=1e-3, dw_dims=None):
         super(ODEOptimizer, self).__init__()
         self.conditional = conditional
         if dynamic_type == 'nn':
-            self.ode_func = ODEfunc(in_dim, hid_dim, n_layers=n_layers, conditional=conditional, dw_dims=dw_dims)
+            self.ode_func = ODEfunc(in_dim, hid_dim, n_layers=n_layers, conditional=conditional, layer_name=layer_name, dw_dims=dw_dims)
         elif dynamic_type == 'linear':
             self.ode_func = LinearDynamic(in_dim, alpha1D=alpha1D)
         self.ode = ODEBlock(self.ode_func, rtol=rtol, atol=atol)
